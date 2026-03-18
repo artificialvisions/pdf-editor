@@ -35,9 +35,11 @@ const COLORS = [
   { label: "Bianco", hex: "#FFFFFF" },
 ];
 
-const TOOLS = { SELECT: "select", TEXT: "text", WHITEOUT: "whiteout" };
+const TOOLS = { SELECT: "select", TEXT: "text", WHITEOUT: "whiteout", IMAGE: "image" };
 
-/* ───── Draggable Text Overlay ───── */
+/* ═══════════════════════════════════════════
+   Draggable Text Overlay
+   ═══════════════════════════════════════════ */
 function TextOverlay({ item, scale, selected, onSelect, onUpdate, onDelete, containerRef }) {
   const [dragging, setDragging] = useState(false);
   const [editing, setEditing] = useState(item._new || false);
@@ -108,7 +110,9 @@ function TextOverlay({ item, scale, selected, onSelect, onUpdate, onDelete, cont
   );
 }
 
-/* ───── Whiteout Rectangle ───── */
+/* ═══════════════════════════════════════════
+   Whiteout Rectangle
+   ═══════════════════════════════════════════ */
 function WhiteoutOverlay({ item, scale, selected, onSelect, onUpdate, onDelete, containerRef }) {
   const [mode, setMode] = useState(null);
   const start = useRef({});
@@ -151,7 +155,99 @@ function WhiteoutOverlay({ item, scale, selected, onSelect, onUpdate, onDelete, 
   );
 }
 
-/* ───── Page View ───── */
+/* ═══════════════════════════════════════════
+   Image Overlay — drag, resize with aspect lock
+   ═══════════════════════════════════════════ */
+function ImageOverlay({ item, scale, selected, onSelect, onUpdate, onDelete, containerRef }) {
+  const [mode, setMode] = useState(null); // null | "drag" | "resize"
+  const start = useRef({});
+
+  const onMD = (e, type) => {
+    e.stopPropagation(); onSelect(); setMode(type);
+    start.current = { mx: e.clientX, my: e.clientY, x: item.x, y: item.y, w: item.w, h: item.h };
+  };
+
+  useEffect(() => {
+    if (!mode) return;
+    const mv = (e) => {
+      const dx = (e.clientX - start.current.mx) / scale;
+      const dy = (e.clientY - start.current.my) / scale;
+      if (mode === "drag") {
+        onUpdate({ ...item, x: Math.max(0, start.current.x + dx), y: Math.max(0, start.current.y + dy) });
+      } else {
+        // Resize — hold shift for free, default keeps aspect ratio
+        const aspect = start.current.w / start.current.h;
+        if (e.shiftKey) {
+          onUpdate({ ...item, w: Math.max(20, start.current.w + dx), h: Math.max(20, start.current.h + dy) });
+        } else {
+          const newW = Math.max(20, start.current.w + dx);
+          onUpdate({ ...item, w: newW, h: newW / aspect });
+        }
+      }
+    };
+    const up = () => setMode(null);
+    window.addEventListener("mousemove", mv);
+    window.addEventListener("mouseup", up);
+    return () => { window.removeEventListener("mousemove", mv); window.removeEventListener("mouseup", up); };
+  }, [mode, scale, item]);
+
+  return (
+    <div
+      onMouseDown={(e) => onMD(e, "drag")}
+      onClick={(e) => { e.stopPropagation(); onSelect(); }}
+      style={{
+        position: "absolute",
+        left: item.x * scale, top: item.y * scale,
+        width: item.w * scale, height: item.h * scale,
+        border: selected ? "2px dashed #E74C3C" : "2px dashed transparent",
+        borderRadius: 3, cursor: "move", zIndex: selected ? 18 : 9,
+        boxSizing: "border-box", overflow: "hidden",
+      }}
+    >
+      <img
+        src={item.dataUrl}
+        alt=""
+        draggable={false}
+        style={{ width: "100%", height: "100%", objectFit: "fill", display: "block", pointerEvents: "none" }}
+      />
+      {/* Resize handle */}
+      <div
+        onMouseDown={(e) => onMD(e, "resize")}
+        style={{
+          position: "absolute", bottom: -4, right: -4, width: 12, height: 12,
+          background: selected ? "#E74C3C" : "rgba(0,0,0,0.15)",
+          borderRadius: 2, cursor: "nwse-resize",
+          border: "1px solid rgba(255,255,255,0.5)",
+        }}
+      />
+      {selected && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          style={{
+            position: "absolute", top: -12, right: -12, width: 22, height: 22,
+            borderRadius: "50%", background: "#E74C3C", color: "#fff", border: "none",
+            fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center",
+            justifyContent: "center", lineHeight: 1, padding: 0,
+          }}
+        >×</button>
+      )}
+      {/* Opacity overlay indicator when selected */}
+      {selected && (
+        <div style={{
+          position: "absolute", bottom: 4, left: 4, fontSize: 9, color: "#fff",
+          background: "rgba(0,0,0,0.5)", padding: "2px 5px", borderRadius: 3,
+          fontFamily: "'JetBrains Mono', monospace", pointerEvents: "none",
+        }}>
+          {Math.round(item.w)}×{Math.round(item.h)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   Page View
+   ═══════════════════════════════════════════ */
 function PageView({ pageNum, pdfDoc, overlays, scale, selectedId, activeTool, onSelect, onUpdate, onDelete, onAddText, onAddWhiteout }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -198,6 +294,13 @@ function PageView({ pageNum, pdfDoc, overlays, scale, selectedId, activeTool, on
     if (activeTool === TOOLS.SELECT) onAddText(pageNum, pos(e).x, pos(e).y);
   };
 
+  const cursorMap = {
+    [TOOLS.WHITEOUT]: "crosshair",
+    [TOOLS.TEXT]: "text",
+    [TOOLS.IMAGE]: "copy",
+    [TOOLS.SELECT]: "default",
+  };
+
   return (
     <div style={{ marginBottom: 28 }}>
       <div style={{ fontSize: 11, color: "#8395a7", marginBottom: 6, fontFamily: "var(--mono)", letterSpacing: 1, textTransform: "uppercase" }}>Pagina {pageNum}</div>
@@ -205,11 +308,16 @@ function PageView({ pageNum, pdfDoc, overlays, scale, selectedId, activeTool, on
         style={{
           position: "relative", width: dims.w || "100%", height: dims.h || 400,
           boxShadow: "0 6px 32px rgba(0,0,0,0.25)", borderRadius: 6, overflow: "hidden", background: "#fff",
-          cursor: activeTool === TOOLS.WHITEOUT ? "crosshair" : activeTool === TOOLS.TEXT ? "text" : "default",
+          cursor: cursorMap[activeTool] || "default",
         }}>
         <canvas ref={canvasRef} style={{ display: "block" }} />
+
+        {/* Layer order: whiteouts → images → text */}
         {overlays.filter((o) => o.page === pageNum && o.type === "whiteout").map((o) => (
           <WhiteoutOverlay key={o.id} item={o} scale={scale} selected={selectedId === o.id} onSelect={() => onSelect(o.id)} onUpdate={onUpdate} onDelete={() => onDelete(o.id)} containerRef={containerRef} />
+        ))}
+        {overlays.filter((o) => o.page === pageNum && o.type === "image").map((o) => (
+          <ImageOverlay key={o.id} item={o} scale={scale} selected={selectedId === o.id} onSelect={() => onSelect(o.id)} onUpdate={onUpdate} onDelete={() => onDelete(o.id)} containerRef={containerRef} />
         ))}
         {overlays.filter((o) => o.page === pageNum && o.type === "text").map((o) => (
           <TextOverlay key={o.id} item={o} scale={scale} selected={selectedId === o.id} onSelect={() => onSelect(o.id)} onUpdate={onUpdate} onDelete={() => onDelete(o.id)} containerRef={containerRef} />
@@ -222,7 +330,9 @@ function PageView({ pageNum, pdfDoc, overlays, scale, selectedId, activeTool, on
   );
 }
 
-/* ───── Main Editor ───── */
+/* ═══════════════════════════════════════════
+   Main Editor
+   ═══════════════════════════════════════════ */
 export default function PDFEditor() {
   const [pdfDoc, setPdfDoc] = useState(null);
   const [fileName, setFileName] = useState("");
@@ -236,7 +346,9 @@ export default function PDFEditor() {
   const [error, setError] = useState("");
   const idC = useRef(0);
   const fileRef = useRef(null);
+  const imgInputRef = useRef(null);
 
+  // Text defaults
   const [defFont, setDefFont] = useState(FONTS[0].value);
   const [defSize, setDefSize] = useState(14);
   const [defColor, setDefColor] = useState("#000000");
@@ -272,6 +384,38 @@ export default function PDFEditor() {
     setSelectedId(id);
   };
 
+  // ── Add Image ──
+  const handleImageFile = useCallback((file) => {
+    if (!file || !file.type.startsWith("image/")) { setError("Seleziona un'immagine valida (PNG, JPG, etc)."); return; }
+    setError("");
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        // Scale image to fit reasonably (max 300px wide at scale=1)
+        const maxW = 300;
+        let w = img.naturalWidth;
+        let h = img.naturalHeight;
+        if (w > maxW) { const r = maxW / w; w = maxW; h = h * r; }
+
+        const id = ++idC.current;
+        // Place on page 1 by default, centered-ish
+        const targetPage = 1;
+        setOverlays((p) => [...p, {
+          id, type: "image", page: targetPage,
+          x: 50, y: 50, w, h,
+          dataUrl: ev.target.result,
+          naturalW: img.naturalWidth, naturalH: img.naturalHeight,
+          opacity: 1,
+        }]);
+        setSelectedId(id);
+        setActiveTool(TOOLS.SELECT);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
   const updateOverlay = (u) => setOverlays((p) => p.map((o) => (o.id === u.id ? u : o)));
   const deleteOverlay = (id) => { setOverlays((p) => p.filter((o) => o.id !== id)); if (selectedId === id) setSelectedId(null); };
 
@@ -287,7 +431,7 @@ export default function PDFEditor() {
     }
   };
 
-  /* Export */
+  /* ── Export ── */
   const handleExport = async () => {
     if (!pdfDoc) return;
     setExporting(true);
@@ -301,10 +445,24 @@ export default function PDFEditor() {
         cv.width = vp.width; cv.height = vp.height;
         const ctx = cv.getContext("2d");
         await page.render({ canvasContext: ctx, viewport: vp }).promise;
+
+        // Whiteouts
         overlays.filter((o) => o.page === p && o.type === "whiteout").forEach((o) => {
           ctx.fillStyle = o.fillColor || "#FFF";
           ctx.fillRect(o.x * rs, o.y * rs, o.w * rs, o.h * rs);
         });
+
+        // Images
+        const imageOverlays = overlays.filter((o) => o.page === p && o.type === "image");
+        for (const o of imageOverlays) {
+          const img = new Image();
+          await new Promise((resolve) => { img.onload = resolve; img.src = o.dataUrl; });
+          ctx.globalAlpha = o.opacity ?? 1;
+          ctx.drawImage(img, o.x * rs, o.y * rs, o.w * rs, o.h * rs);
+          ctx.globalAlpha = 1;
+        }
+
+        // Text
         overlays.filter((o) => o.page === p && o.type === "text").forEach((o) => {
           ctx.save();
           ctx.font = `${o.italic ? "italic " : ""}${o.bold ? "bold " : ""}${o.fontSize * rs}px ${o.fontFamily}`;
@@ -312,6 +470,7 @@ export default function PDFEditor() {
           o.text.split("\n").forEach((l, i) => ctx.fillText(l, o.x * rs, o.y * rs + i * o.fontSize * rs * 1.35));
           ctx.restore();
         });
+
         imgs.push({ d: cv.toDataURL("image/jpeg", 0.93), w: vp.width / rs, h: vp.height / rs });
       }
       if (!window.PDFLib) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js");
@@ -328,7 +487,7 @@ export default function PDFEditor() {
     setExporting(false);
   };
 
-  /* Styles */
+  /* ── Styles ── */
   const mono = "'JetBrains Mono', monospace";
   const pill = (on) => ({
     padding: "7px 14px", borderRadius: 6, border: "none", fontSize: 12,
@@ -343,19 +502,21 @@ export default function PDFEditor() {
 
   const isText = sel?.type === "text";
   const isWO = sel?.type === "whiteout";
+  const isImg = sel?.type === "image";
   const showTextProps = isText || activeTool === TOOLS.TEXT || (!sel && activeTool === TOOLS.SELECT);
 
   const hints = {
-    [TOOLS.SELECT]: "Doppio click sulla pagina → aggiungi testo · Click su un elemento → seleziona · Trascina → sposta",
+    [TOOLS.SELECT]: "Doppio click → aggiungi testo · Click elemento → seleziona · Trascina → sposta",
     [TOOLS.TEXT]: "Click sulla pagina per posizionare un nuovo blocco di testo",
-    [TOOLS.WHITEOUT]: "Trascina sulla pagina per disegnare un rettangolo bianco che copre il testo originale",
+    [TOOLS.WHITEOUT]: "Trascina sulla pagina per coprire il testo originale con un rettangolo",
+    [TOOLS.IMAGE]: "Clicca 'Carica Immagine' nella toolbar per inserire un'immagine nel PDF",
   };
 
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(160deg, #0f0c29 0%, #1a1a2e 40%, #16213e 100%)", color: "#ecf0f1", fontFamily: "'Segoe UI', system-ui, sans-serif", "--mono": mono }}>
       <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div style={{ padding: "14px 28px", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, background: "rgba(0,0,0,0.25)", backdropFilter: "blur(12px)", position: "sticky", top: 0, zIndex: 100 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 34, height: 34, borderRadius: 7, background: "linear-gradient(135deg, #E74C3C, #C0392B)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 700, fontFamily: mono }}>P</div>
@@ -381,6 +542,7 @@ export default function PDFEditor() {
       </div>
 
       <input ref={fileRef} type="file" accept=".pdf" style={{ display: "none" }} onChange={(e) => handleFile(e.target.files?.[0])} />
+      <input ref={imgInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) handleImageFile(e.target.files[0]); e.target.value = ""; }} />
 
       <div style={{ padding: "20px 28px", maxWidth: 1100, margin: "0 auto" }}>
         {error && <div style={{ background: "rgba(231,76,60,0.12)", border: "1px solid rgba(231,76,60,0.25)", borderRadius: 6, padding: "10px 16px", marginBottom: 14, fontSize: 13, color: "#E74C3C" }}>{error}</div>}
@@ -397,19 +559,23 @@ export default function PDFEditor() {
         {loading && <div style={{ textAlign: "center", padding: 80, color: "#8395a7" }}>Caricamento...</div>}
 
         {pdfDoc && !loading && <>
-          {/* Toolbar */}
+          {/* ── Toolbar ── */}
           <div style={{ background: "rgba(15,12,41,0.92)", backdropFilter: "blur(14px)", borderRadius: 10, padding: "12px 18px", marginBottom: 12, border: "1px solid rgba(255,255,255,0.06)", display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-end" }}>
+
+            {/* Tool buttons */}
             <div>
               <div style={lbl}>Strumento</div>
               <div style={{ display: "flex", gap: 4 }}>
                 <button style={pill(activeTool === TOOLS.SELECT)} onClick={() => setActiveTool(TOOLS.SELECT)}>↖ Seleziona</button>
                 <button style={pill(activeTool === TOOLS.TEXT)} onClick={() => setActiveTool(TOOLS.TEXT)}>T Testo</button>
                 <button style={pill(activeTool === TOOLS.WHITEOUT)} onClick={() => setActiveTool(TOOLS.WHITEOUT)}>▭ Copri</button>
+                <button style={pill(activeTool === TOOLS.IMAGE)} onClick={() => { setActiveTool(TOOLS.IMAGE); imgInputRef.current?.click(); }}>🖼 Immagine</button>
               </div>
             </div>
 
             <div style={{ width: 1, height: 36, background: "rgba(255,255,255,0.08)" }} />
 
+            {/* Text properties */}
             {showTextProps && <>
               <div>
                 <div style={lbl}>Font</div>
@@ -444,6 +610,7 @@ export default function PDFEditor() {
               </div>
             </>}
 
+            {/* Whiteout properties */}
             {isWO && (
               <div>
                 <div style={lbl}>Colore copertura</div>
@@ -454,6 +621,30 @@ export default function PDFEditor() {
                   ))}
                 </div>
               </div>
+            )}
+
+            {/* Image properties */}
+            {isImg && (
+              <>
+                <div>
+                  <div style={lbl}>Opacità</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input type="range" min={0.1} max={1} step={0.05} value={sel.opacity ?? 1}
+                      onChange={(e) => updateSel({ opacity: Number(e.target.value) })}
+                      style={{ width: 80, accentColor: "#E74C3C" }} />
+                    <span style={{ fontSize: 11, color: "#c0c8d0", fontFamily: mono, minWidth: 28 }}>{Math.round((sel.opacity ?? 1) * 100)}%</span>
+                  </div>
+                </div>
+                <div>
+                  <div style={lbl}>Pagina</div>
+                  <select value={sel.page} onChange={(e) => updateSel({ page: Number(e.target.value) })} style={{ ...inp, width: 70 }}>
+                    {Array.from({ length: numPages }, (_, i) => i + 1).map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+                <button onClick={() => imgInputRef.current?.click()} style={{ ...pill(false), fontSize: 11 }}>+ Altra immagine</button>
+              </>
             )}
 
             {sel && <>
