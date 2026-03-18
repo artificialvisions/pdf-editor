@@ -406,7 +406,6 @@ export default function PDFEditor() {
           x: 50, y: 50, w, h,
           dataUrl: ev.target.result,
           naturalW: img.naturalWidth, naturalH: img.naturalHeight,
-          opacity: 1,
         }]);
         setSelectedId(id);
         setActiveTool(TOOLS.SELECT);
@@ -457,9 +456,7 @@ export default function PDFEditor() {
         for (const o of imageOverlays) {
           const img = new Image();
           await new Promise((resolve) => { img.onload = resolve; img.src = o.dataUrl; });
-          ctx.globalAlpha = o.opacity ?? 1;
           ctx.drawImage(img, o.x * rs, o.y * rs, o.w * rs, o.h * rs);
-          ctx.globalAlpha = 1;
         }
 
         // Text
@@ -559,82 +556,78 @@ export default function PDFEditor() {
         {loading && <div style={{ textAlign: "center", padding: 80, color: "#8395a7" }}>Caricamento...</div>}
 
         {pdfDoc && !loading && <>
-          {/* ── Toolbar ── */}
-          <div style={{ background: "rgba(15,12,41,0.92)", backdropFilter: "blur(14px)", borderRadius: 10, padding: "12px 18px", marginBottom: 12, border: "1px solid rgba(255,255,255,0.06)", display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-end" }}>
+          {/* ── Sticky Toolbar ── */}
+          <div style={{ position: "sticky", top: 52, zIndex: 90, marginLeft: -28, marginRight: -28, padding: "0 28px", marginBottom: 12 }}>
+            <div style={{ background: "rgba(15,12,41,0.95)", backdropFilter: "blur(14px)", borderRadius: 0, padding: "10px 18px", border: "1px solid rgba(255,255,255,0.06)", borderTop: "none", display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-end" }}>
 
-            {/* Tool buttons */}
-            <div>
-              <div style={lbl}>Strumento</div>
-              <div style={{ display: "flex", gap: 4 }}>
-                <button style={pill(activeTool === TOOLS.SELECT)} onClick={() => setActiveTool(TOOLS.SELECT)}>↖ Seleziona</button>
-                <button style={pill(activeTool === TOOLS.TEXT)} onClick={() => setActiveTool(TOOLS.TEXT)}>T Testo</button>
-                <button style={pill(activeTool === TOOLS.WHITEOUT)} onClick={() => setActiveTool(TOOLS.WHITEOUT)}>▭ Copri</button>
-                <button style={pill(activeTool === TOOLS.IMAGE)} onClick={() => { setActiveTool(TOOLS.IMAGE); imgInputRef.current?.click(); }}>🖼 Immagine</button>
-              </div>
-            </div>
-
-            <div style={{ width: 1, height: 36, background: "rgba(255,255,255,0.08)" }} />
-
-            {/* Text properties */}
-            {showTextProps && <>
+              {/* Tool buttons */}
               <div>
-                <div style={lbl}>Font</div>
-                <select value={isText ? sel.fontFamily : defFont} onChange={(e) => isText ? updateSel({ fontFamily: e.target.value }) : setDefFont(e.target.value)} style={{ ...inp, width: 120 }}>
-                  {FONTS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <div style={lbl}>Dimensione</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                  <button onClick={() => { const v = Math.max(6, (isText ? sel.fontSize : defSize) - 1); isText ? updateSel({ fontSize: v }) : setDefSize(v); }} style={{ ...pill(false), padding: "5px 8px", fontSize: 16, lineHeight: 1 }}>−</button>
-                  <input type="number" min={6} max={120} value={isText ? sel.fontSize : defSize} onChange={(e) => { const v = Number(e.target.value); isText ? updateSel({ fontSize: v }) : setDefSize(v); }} style={{ ...inp, width: 48, textAlign: "center" }} />
-                  <button onClick={() => { const v = Math.min(120, (isText ? sel.fontSize : defSize) + 1); isText ? updateSel({ fontSize: v }) : setDefSize(v); }} style={{ ...pill(false), padding: "5px 8px", fontSize: 16, lineHeight: 1 }}>+</button>
+                <div style={lbl}>Strumento</div>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button style={pill(activeTool === TOOLS.SELECT)} onClick={() => setActiveTool(TOOLS.SELECT)}>↖ Seleziona</button>
+                  <button style={pill(activeTool === TOOLS.TEXT)} onClick={() => setActiveTool(TOOLS.TEXT)}>T Testo</button>
+                  <button style={pill(activeTool === TOOLS.WHITEOUT)} onClick={() => setActiveTool(TOOLS.WHITEOUT)}>▭ Copri</button>
+                  <button style={pill(activeTool === TOOLS.IMAGE)} onClick={() => { setActiveTool(TOOLS.IMAGE); imgInputRef.current?.click(); }}>🖼 Immagine</button>
                 </div>
               </div>
-              <div>
-                <div style={lbl}>Colore</div>
-                <div style={{ display: "flex", gap: 3 }}>
-                  {COLORS.map((c) => {
-                    const on = (isText ? sel.color : defColor) === c.hex;
-                    return <button key={c.hex} title={c.label} onClick={() => isText ? updateSel({ color: c.hex }) : setDefColor(c.hex)}
-                      style={{ width: 22, height: 22, borderRadius: "50%", padding: 0, background: c.hex, cursor: "pointer", border: on ? "2.5px solid #E74C3C" : "2px solid rgba(255,255,255,0.15)", boxShadow: on ? "0 0 0 2px rgba(231,76,60,0.3)" : "none" }} />;
-                  })}
-                </div>
-              </div>
-              <div>
-                <div style={lbl}>Stile</div>
-                <div style={{ display: "flex", gap: 3 }}>
-                  <button onClick={() => isText ? updateSel({ bold: !sel.bold }) : setDefBold(!defBold)} style={{ ...pill(isText ? sel.bold : defBold), fontWeight: "bold", padding: "5px 10px" }}>B</button>
-                  <button onClick={() => isText ? updateSel({ italic: !sel.italic }) : setDefItalic(!defItalic)} style={{ ...pill(isText ? sel.italic : defItalic), fontStyle: "italic", padding: "5px 10px" }}>I</button>
-                </div>
-              </div>
-            </>}
 
-            {/* Whiteout properties */}
-            {isWO && (
-              <div>
-                <div style={lbl}>Colore copertura</div>
-                <div style={{ display: "flex", gap: 3 }}>
-                  {["#FFFFFF", "#F5F5F5", "#FFFDE7", "#E8EAF6"].map((c) => (
-                    <button key={c} onClick={() => updateSel({ fillColor: c })}
-                      style={{ width: 22, height: 22, borderRadius: "50%", padding: 0, background: c, cursor: "pointer", border: sel.fillColor === c ? "2.5px solid #E74C3C" : "2px solid rgba(255,255,255,0.15)" }} />
-                  ))}
-                </div>
-              </div>
-            )}
+              <div style={{ width: 1, height: 36, background: "rgba(255,255,255,0.08)" }} />
 
-            {/* Image properties */}
-            {isImg && (
-              <>
+              {/* Text properties */}
+              {showTextProps && <>
                 <div>
-                  <div style={lbl}>Opacità</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input type="range" min={0.1} max={1} step={0.05} value={sel.opacity ?? 1}
-                      onChange={(e) => updateSel({ opacity: Number(e.target.value) })}
-                      style={{ width: 80, accentColor: "#E74C3C" }} />
-                    <span style={{ fontSize: 11, color: "#c0c8d0", fontFamily: mono, minWidth: 28 }}>{Math.round((sel.opacity ?? 1) * 100)}%</span>
+                  <div style={lbl}>Font</div>
+                  <select value={isText ? sel.fontFamily : defFont} onChange={(e) => isText ? updateSel({ fontFamily: e.target.value }) : setDefFont(e.target.value)} style={{ ...inp, width: 120 }}>
+                    {FONTS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={lbl}>Dimensione</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                    <button onClick={() => { const v = Math.max(6, (isText ? sel.fontSize : defSize) - 1); isText ? updateSel({ fontSize: v }) : setDefSize(v); }} style={{ ...pill(false), padding: "5px 8px", fontSize: 16, lineHeight: 1 }}>−</button>
+                    <input type="number" min={6} max={120} value={isText ? sel.fontSize : defSize} onChange={(e) => { const v = Number(e.target.value); isText ? updateSel({ fontSize: v }) : setDefSize(v); }} style={{ ...inp, width: 48, textAlign: "center" }} />
+                    <button onClick={() => { const v = Math.min(120, (isText ? sel.fontSize : defSize) + 1); isText ? updateSel({ fontSize: v }) : setDefSize(v); }} style={{ ...pill(false), padding: "5px 8px", fontSize: 16, lineHeight: 1 }}>+</button>
                   </div>
                 </div>
+                <div>
+                  <div style={lbl}>Colore</div>
+                  <div style={{ display: "flex", gap: 3 }}>
+                    {COLORS.map((c) => {
+                      const on = (isText ? sel.color : defColor) === c.hex;
+                      return <button key={c.hex} title={c.label} onClick={() => isText ? updateSel({ color: c.hex }) : setDefColor(c.hex)}
+                        style={{ width: 22, height: 22, borderRadius: "50%", padding: 0, background: c.hex, cursor: "pointer", border: on ? "2.5px solid #E74C3C" : "2px solid rgba(255,255,255,0.15)", boxShadow: on ? "0 0 0 2px rgba(231,76,60,0.3)" : "none" }} />;
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <div style={lbl}>Stile</div>
+                  <div style={{ display: "flex", gap: 3 }}>
+                    <button onClick={() => isText ? updateSel({ bold: !sel.bold }) : setDefBold(!defBold)} style={{ ...pill(isText ? sel.bold : defBold), fontWeight: "bold", padding: "5px 10px" }}>B</button>
+                    <button onClick={() => isText ? updateSel({ italic: !sel.italic }) : setDefItalic(!defItalic)} style={{ ...pill(isText ? sel.italic : defItalic), fontStyle: "italic", padding: "5px 10px" }}>I</button>
+                  </div>
+                </div>
+              </>}
+
+              {/* Whiteout properties */}
+              {isWO && (
+                <div>
+                  <div style={lbl}>Colore copertura</div>
+                  <div style={{ display: "flex", gap: 3 }}>
+                    {["#FFFFFF", "#F5F5F5", "#FFFDE7", "#E8EAF6"].map((c) => (
+                      <button key={c} onClick={() => updateSel({ fillColor: c })}
+                        style={{ width: 22, height: 22, borderRadius: "50%", padding: 0, background: c, cursor: "pointer", border: sel.fillColor === c ? "2.5px solid #E74C3C" : "2px solid rgba(255,255,255,0.15)" }} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Image properties */}
+              {isImg && (
+                <button onClick={() => imgInputRef.current?.click()} style={{ ...pill(false), fontSize: 11 }}>+ Altra immagine</button>
+              )}
+
+              {/* Page selector — for any selected element */}
+              {sel && numPages > 1 && (
                 <div>
                   <div style={lbl}>Pagina</div>
                   <select value={sel.page} onChange={(e) => updateSel({ page: Number(e.target.value) })} style={{ ...inp, width: 70 }}>
@@ -643,19 +636,18 @@ export default function PDFEditor() {
                     ))}
                   </select>
                 </div>
-                <button onClick={() => imgInputRef.current?.click()} style={{ ...pill(false), fontSize: 11 }}>+ Altra immagine</button>
-              </>
-            )}
+              )}
 
-            {sel && <>
-              <div style={{ width: 1, height: 36, background: "rgba(255,255,255,0.08)" }} />
-              <button onClick={() => deleteOverlay(sel.id)} style={{ ...pill(false), color: "#E74C3C" }}>✕ Elimina</button>
-            </>}
-          </div>
+              {sel && <>
+                <div style={{ width: 1, height: 36, background: "rgba(255,255,255,0.08)" }} />
+                <button onClick={() => deleteOverlay(sel.id)} style={{ ...pill(false), color: "#E74C3C" }}>✕ Elimina</button>
+              </>}
+            </div>
 
-          {/* Hint */}
-          <div style={{ fontSize: 11, color: "#8395a7", fontFamily: mono, padding: "8px 14px", background: "rgba(255,255,255,0.03)", borderRadius: 6, marginBottom: 14, border: "1px solid rgba(255,255,255,0.04)", letterSpacing: 0.3 }}>
-            💡 {hints[activeTool]}
+            {/* Hint */}
+            <div style={{ fontSize: 11, color: "#8395a7", fontFamily: mono, padding: "6px 18px", background: "rgba(15,12,41,0.85)", borderBottomLeftRadius: 8, borderBottomRightRadius: 8, border: "1px solid rgba(255,255,255,0.04)", borderTop: "none", letterSpacing: 0.3 }}>
+              💡 {hints[activeTool]}
+            </div>
           </div>
 
           <div style={{ fontSize: 11, color: "#576574", fontFamily: mono, marginBottom: 14 }}>
